@@ -1,190 +1,100 @@
-/** START FILE tokenizer.js **/
-
 (function(qsc) {
-  var StateCodes = qsc.StateCodes;
+  /** START EXPORTS **/
   
-  var EasyRe = {
-    ALPHA: /[a-zA-Z]/,
-    ALPHA_DOLLAR_UNDER: /[a-zA-Z\$_]/,
-    NUM: /\d/,
-    NUM_BIN: /[01]/,
-    NUM_OCT: /[0-7]/,
-    NUM_HEX: /[0-9a-fA-F]/,
-    ALPHA_DOLLAR_UNDER_NUM: /[a-zA-Z0-9\$_]/,
-    RAD_PRE_LETTER: /[xbo]/, // Radix prefix letter (x, b, or o, for 0x (hex), 0b (binary), or 0o (octal))
-    WS: /\w/,
-    ST: / |\t/, // Space or tab
-    PUNC: /[\\\/\$\{\}\[\]\.\,\-\+\?\=\(\)\^\*\|~`!@#%&_:;'"<>]/,
-    DELIM: /\{\}\[\]\(\)/
-  };
+  var TokenTypes = qsc.TokenTypes;
+  
+  /** END IMPORTS **/
   
   function tokenize(code) {
-    var data = [{state: StateCodes.EXEC}];
-    var tokens = [];
-    // TODOS: fill out endState stub
-    function getLatestData() {
-      return data[data.length - 1];
-    }
-    function addState(state) {
-      data.push(state);
-    }
-    function redoCharCheck() {
-      i--;
-    }
-    function endState(options) {
-      var latestData = getLatestData();
-      data.pop();
-      options = options || {shouldNotAppend: false}
-      
-      if (!options.shouldNotAppend) {
-        if (false) {
-          // Special case logic here
-        } else {
-          tokens.push(latestData);
-        }
-      }
-    }
-    
-    for (var i = 0; i < code.length; i++) {
-      var char = code.charAt(i);
-      switch (getLatestData().state) {
-        case StateCodes.EXEC:
-          if (EasyRe.ALPHA_DOLLAR_UNDER.test(char)) {
-            addState({state: StateCodes.WORD, contents: char});
-          } else if (EasyRe.NUM.test(char)) {
-            addState({state: StateCodes.NUMBER, contents: char, radix: 10});
-          } else if (EasyRe.ST.test(char)) {
-            addState({state: StateCodes.SPACE_TAB});
-            endState();
-          } else if ('\n' === char) {
-            addState({state: StateCodes.NEWLINE});
-          } else if (EasyRe.DELIM.test(char)) {
-            if (getLatestState().isStringInterpolation && '}' === char) {
-              endState();
-            } else {
-              var delimState = ({
-                '(': StateCodes.LP,
-                ')': StateCodes.RP,
-                '[': StateCodes.LS,
-                ']': StateCodes.RS,
-                '{': StateCodes.LB,
-                '}': StateCodes.RB
-              })[char];
-              addState({state: delimState});
-              endState();
-            }
-          } else if (EasyRe.PUNC.test()) {
-              addState({state: StateCodes.PUNC_SEQ, contents: char});
-          }
-          break;
-        case StateCodes.WORD:
-          if (EasyRe.ALPHA_DOLLAR_UNDER_NUM.test(char)) {
-            getLatestData().contents += char;
+    var emptyState = {type: null};
+    var state = emptyState;
+    var tokens = {};
+    for (var index = 0; index < code.length; index++) {
+      var char = code.charAt(index);
+      switch (state.type) {
+        case TokenTypes.WORD:
+          if (/[a-zA-Z0-9]/.test(char)) {
+              state.content += char;
           } else {
-            endState();
-            redoCharCheck();
+            tokens.push(state);
+            // Redo character check
+            state = emptyState;
+            index--;
           }
           break;
-        case StateCodes.NUMBER:
-          if (({2: EasyRe.NUM_BIN, 8: EasyRe.NUM_OCT, 10: EasyRe.NUM, 16: EasyRe.NUM_HEX})[getLatestData().radix].test(char)) {
-            getLatestData().contents += char;
-          } else if (getLatestData().contents.length === 1 && EasyRe.RAD_PRE_LETTER.test(char)) {
-            var radix = ({
-              x: 16,
+        case TokenTypes.NUMBER:
+          if ('0' === state.content && /[box]/.test(char)) {
+            state.content = '';
+            state.radix = ({
+              b: 2,
               o: 8,
-              b: 2
+              x: 16
             })[char];
-            getLatestData().radix = radix;
-          } else if ('_' === char) {
-            // Do nothing. Underscores are allowed for readability.
+          } else if (({
+            2: /[01]/,
+            8: /[0-7]/,
+            10: /\d/,
+            16: /[0-9a-fA-F]/
+          })[state.radix].test(char)) {
+            state.content += char;
           } else {
-            addState({state: StateCodes.INVALID, char: char});
-            endState();
-            endState();
+            tokens.push(state);
+            // Redo character check
+            state = emptyState;
+            index--;
           }
           break;
-        case StateCodes.SPACE_TAB:
-          break;
-        case StateCodes.PUNC_SEQ:
-          if ('//' === getLatestData().contents) {
-            endState({shouldNotAppend: true});
-            addState({state: StateCodes.COMMENT, type: 'SL' /* SL for 'Single line' */, contents: ''});
-            redoCharCheck();
-          } else if ('/*' === getLatestData().contents) {
-            endState({shouldNotAppend: true});
-            addState({state: StateCodes.COMMENT, type: 'ML' /* ML for 'Multi-line' */, contents: ''});
-            redoCharCheck();
-          } else if (!EasyRe.DELIM.test(char) && EasyRe.PUNC.test(char)) {
-            getLatestData().contents += char;
+        case TokenTypes.PUNC_SEQ:
+          if (/[~`!@#\$%\^&\*\(\)\_\-=\+\{\[\}\]\|\\:;"'<,>\.\?\/]/.test(char)) {
+            state.content += char;
           } else {
-            endState();
-            redoCharCheck();
+            tokens.push(state);
+            // Redo character check
+            state = emptyState;
+            index--;
           }
           break;
-        case StateCodes.INVALID:
-          break;
-        case StateCodes.NEWLINE:
-          break;
-        case StateCodes.STRING_BACKSLASH:
-          break;
-        case StateCodes.COMMENT:
-          if ('SL' === getLatestData().type) {
-            if ('\n' === char) {
-              endState();
-            } else {
-              getLatestData().contents += char;
-            }
-          } else if ('ML' === getLatestData().type) {
-            getLatestData().contents += char;
-            if (getLatestData().contents.slice(-2) === '*/') {
-              getLatestData().contents = getLatestData().contents.slice(0, -2);
-              endState();
-            }
+        case TokenTypes.MEANINGLESS_WHITESPACE_SEQ:
+          if (/\w/.test(char)) {
+            state.content += char;
           } else {
-            // TODO: Error!
+            tokens.push(state);
+            // Redo character check
+            state = emptyState;
+            index--;
           }
           break;
-        case StateCodes.STRING:
-          if ('\\' === char) {
-            addToken({state: StateCodes.STRING_PART, contents: getLatestData().contents});
-            getLatestData().contents = '';
-            addState({state: EasyRe.STRING_BACKSLASH, escaped: ''});
-          } else if ('${' === getLatestData().contents.slice(-2)) {
-            addToken({state: StateCodes.STRING_PART, contents: getLatestData().contents.slice(0, -2)});
-            getLatestData.contents = '';
-            addState({state: StateCodes.EXEC, stringInterpolation: true});
+        case null:
+          if (/[a-zA-Z]/.test(char)) {
+            state = {type: TokenTypes.WORD, content: char};
+          } else if (/\d/.test(char)) {
+            state = {type: TokenTypes.NUMBER, content: char, radix: 10};
+          } else if (/[~`!@#\$%\^&\*\(\)\_\-=\+\{\[\}\]\|\\:;"'<,>\.\?\/]/.test(char)) {
+            state = {type: TokenTypes.PUNC_SEQ, content: char};
+          } else if ('\n' === char) {
+            tokens.push({type: TokenTypes.NEWLINE});
+          } else if (/\w/.test(char)) {
+            state = {type: TokenTypes.MEANINGLESS_WHITESPACE_SEQ, content: char};
           } else {
-            getLatestData().contents += char;
-            if ('QUOTE' === getLatestData().delimType) {
-              if (("'" === getLatestData().slice(-1) && 'SINGLE' === getLatestData().quoteType) ||
-                  ('"' === getLatestData().slice(-1) && 'DOUBLE' === getLatestData().quoteType)) {
-                getLatestData().contents = getLatestData().contents.slice(0, -1);
-                endState();
-              }
-            } else if ('QUOTE_BRACE' === getLatestData().delimType) {
-              if (("'{" === getLatestData().slice(-2) && 'SINGLE' === getLatestData().quoteType) ||
-                  ('"{' === getLatestData().slice(-2) && 'DOUBLE' === getLatestData().quoteType)) {
-                getLatestData().contents = getLatestData().contents.slice(0, -2);
-                endState();
-              }
-            } else {
-              // TODO: Error!
-            }
+            qsc.error.illegalToken({content: char});
+            // qsc.error.illegalToken should throw an error, but if it doesn't:
+            tokens.push({type: TokenTypes.ILLEGAL, content: char});
+            return tokens;
           }
           break;
-      }
+                        }
     }
-    
-    // Resolve any unended states
-    while (data.length) {
-      endState();
+      
+    if (state !== emptyState) {
+      tokens.push(state);
     }
     
     return tokens;
-  };
+  }
   
   /** START EXPORTS **/
+  
   qsc.tokenize = tokenize;
+  
+  /** END EXPORTS **/
 })(QuartzscriptCompiler);
-
-/** END FILE tokenizer.js **/
