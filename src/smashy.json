@@ -3,9 +3,11 @@
   
   "files": [
     "QuartzscriptCompiler",
-    "StateCodes",
+    "TokenTypes",
     "tokenizer",
     "syntaxTree",
     "jsGen"
-  ]
+  ],
+  
+  "outputName": "qsc.js"
 }
