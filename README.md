@@ -1,3 +1,2 @@
 # quartzscript
-A programming language I'm developing that compiles to Javascript.
-As of now, it's nowhere near complete.
+This project is incomplete, but no longer being worked on. It is only preserved for historical reference.
